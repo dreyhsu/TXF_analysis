@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import talib
 
 def create_volume_bars(df, volume_per_bar=1000):
     """
@@ -39,15 +40,145 @@ def create_volume_bars(df, volume_per_bar=1000):
     # Flatten column names
     volume_bars.columns = ['volume_bar', 'start_time', 'end_time', 'open', 'high', 'low', 'close', 'volume']
     
+    # Calculate ATR using talib
+    volume_bars['atr'] = talib.ATR(volume_bars['high'].values, 
+                                   volume_bars['low'].values, 
+                                   volume_bars['close'].values, 
+                                   timeperiod=14)
+    
+    # Calculate RSI
+    volume_bars['rsi'] = talib.RSI(volume_bars['close'].values, timeperiod=14)
+    
+    # Generate buy and sell signals based on RSI
+    signals = generate_rsi_signals(volume_bars['rsi'].values)
+    volume_bars['buy_signal'] = signals['buy']
+    volume_bars['sell_signal'] = signals['sell']
+    
+    # Calculate Supertrend
+    supertrend, trend = calculate_supertrend(volume_bars['high'].values,
+                                           volume_bars['low'].values,
+                                           volume_bars['close'].values,
+                                           period=10, 
+                                           multiplier=3.0)
+    
+    volume_bars['supertrend'] = supertrend
+    volume_bars['trend'] = trend
+    
     return volume_bars
+
+def calculate_supertrend(high, low, close, period=10, multiplier=3.0):
+    """
+    Calculate Supertrend indicator using ATR
+    
+    Parameters:
+    high, low, close: price arrays
+    period: ATR period (default 10)
+    multiplier: multiplier for ATR (default 3.0)
+    
+    Returns:
+    supertrend, trend: arrays for supertrend values and trend direction
+    """
+    # Calculate ATR
+    atr = talib.ATR(high, low, close, timeperiod=period)
+    
+    # Handle NaN values in ATR by forward filling
+    atr = pd.Series(atr).fillna(method='bfill').fillna(method='ffill').values
+    
+    # Calculate basic upper and lower bands
+    hl2 = (high + low) / 2
+    basic_upper_band = hl2 + (multiplier * atr)
+    basic_lower_band = hl2 - (multiplier * atr)
+    
+    # Initialize arrays
+    final_upper_band = np.zeros_like(close)
+    final_lower_band = np.zeros_like(close)
+    supertrend = np.zeros_like(close)
+    trend = np.ones_like(close)  # 1 for uptrend, -1 for downtrend
+    
+    # Start calculations from the period index to avoid NaN issues
+    start_idx = max(1, period)
+    
+    for i in range(len(close)):
+        if i < start_idx:
+            # For initial values, use simple calculation
+            final_upper_band[i] = basic_upper_band[i] if not np.isnan(basic_upper_band[i]) else hl2[i] + (multiplier * np.nanmean(atr[:i+5]) if i < 5 else np.nanmean(atr[max(0,i-period):i+1]))
+            final_lower_band[i] = basic_lower_band[i] if not np.isnan(basic_lower_band[i]) else hl2[i] - (multiplier * np.nanmean(atr[:i+5]) if i < 5 else np.nanmean(atr[max(0,i-period):i+1]))
+        else:
+            # Final upper band
+            if np.isnan(basic_upper_band[i]):
+                final_upper_band[i] = final_upper_band[i-1]
+            elif basic_upper_band[i] < final_upper_band[i-1] or close[i-1] > final_upper_band[i-1]:
+                final_upper_band[i] = basic_upper_band[i]
+            else:
+                final_upper_band[i] = final_upper_band[i-1]
+                
+            # Final lower band
+            if np.isnan(basic_lower_band[i]):
+                final_lower_band[i] = final_lower_band[i-1]
+            elif basic_lower_band[i] > final_lower_band[i-1] or close[i-1] < final_lower_band[i-1]:
+                final_lower_band[i] = basic_lower_band[i]
+            else:
+                final_lower_band[i] = final_lower_band[i-1]
+        
+        # Determine trend and supertrend
+        if i == 0:
+            if close[i] <= final_lower_band[i]:
+                supertrend[i] = final_upper_band[i]
+                trend[i] = -1
+            else:
+                supertrend[i] = final_lower_band[i]
+                trend[i] = 1
+        else:
+            if trend[i-1] == 1 and close[i] > final_lower_band[i]:
+                supertrend[i] = final_lower_band[i]
+                trend[i] = 1
+            elif trend[i-1] == 1 and close[i] <= final_lower_band[i]:
+                supertrend[i] = final_upper_band[i]
+                trend[i] = -1
+            elif trend[i-1] == -1 and close[i] < final_upper_band[i]:
+                supertrend[i] = final_upper_band[i]
+                trend[i] = -1
+            else:
+                supertrend[i] = final_lower_band[i]
+                trend[i] = 1
+    
+    return supertrend, trend
+
+def generate_rsi_signals(rsi, oversold_level=30, overbought_level=70):
+    """
+    Generate buy and sell signals based on RSI levels
+    
+    Parameters:
+    rsi: RSI values array
+    oversold_level: RSI level below which to generate buy signals (default 30)
+    overbought_level: RSI level above which to generate sell signals (default 70)
+    
+    Returns:
+    Dictionary with 'buy' and 'sell' signal arrays
+    """
+    buy_signals = np.zeros_like(rsi, dtype=bool)
+    sell_signals = np.zeros_like(rsi, dtype=bool)
+    
+    # Generate signals when RSI crosses the thresholds
+    for i in range(1, len(rsi)):
+        if not np.isnan(rsi[i]) and not np.isnan(rsi[i-1]):
+            # Buy signal: RSI crosses above oversold level from below
+            if rsi[i-1] <= oversold_level and rsi[i] > oversold_level:
+                buy_signals[i] = True
+            
+            # Sell signal: RSI crosses below overbought level from above
+            if rsi[i-1] >= overbought_level and rsi[i] < overbought_level:
+                sell_signals[i] = True
+    
+    return {'buy': buy_signals, 'sell': sell_signals}
 
 def plot_volume_bars(volume_bars, title="Volume Bars Chart"):
     """
-    Plot volume bars as candlestick chart
+    Plot volume bars as candlestick chart with RSI buy/sell signals
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), height_ratios=[3, 1])
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
     
-    # Price chart
+    # Price chart (candlesticks only)
     for i, row in volume_bars.iterrows():
         color = 'green' if row['close'] >= row['open'] else 'red'
         
@@ -59,16 +190,44 @@ def plot_volume_bars(volume_bars, title="Volume Bars Chart"):
         body_bottom = min(row['open'], row['close'])
         ax1.bar(i, body_height, bottom=body_bottom, color=color, alpha=0.7, width=0.8)
     
-    ax1.set_title(f'{title} - Price')
+    # Plot buy and sell signals
+    buy_indices = volume_bars.index[volume_bars['buy_signal']].tolist()
+    sell_indices = volume_bars.index[volume_bars['sell_signal']].tolist()
+    
+    if buy_indices:
+        ax1.scatter(buy_indices, volume_bars.loc[buy_indices, 'close'], 
+                   color='lime', marker='^', s=100, label='Buy Signal', zorder=5)
+    
+    if sell_indices:
+        ax1.scatter(sell_indices, volume_bars.loc[sell_indices, 'close'], 
+                   color='red', marker='v', s=100, label='Sell Signal', zorder=5)
+    
+    ax1.set_title(f'{title} - Price with RSI Signals')
     ax1.set_ylabel('Price')
     ax1.grid(True, alpha=0.3)
+    ax1.legend()
     
-    # Volume chart
-    ax2.bar(range(len(volume_bars)), volume_bars['volume'], color='blue', alpha=0.7)
-    ax2.set_title('Volume')
-    ax2.set_ylabel('Volume')
+    # RSI subplot
+    ax2.plot(volume_bars.index, volume_bars['rsi'], color='purple', linewidth=1.5, label='RSI')
+    ax2.axhline(y=70, color='red', linestyle='--', alpha=0.7, label='Overbought (70)')
+    ax2.axhline(y=30, color='green', linestyle='--', alpha=0.7, label='Oversold (30)')
+    ax2.axhline(y=50, color='black', linestyle='-', alpha=0.5)
+    
+    # Highlight RSI signal areas
+    if buy_indices:
+        ax2.scatter(buy_indices, volume_bars.loc[buy_indices, 'rsi'], 
+                   color='lime', marker='^', s=100, zorder=5)
+    
+    if sell_indices:
+        ax2.scatter(sell_indices, volume_bars.loc[sell_indices, 'rsi'], 
+                   color='red', marker='v', s=100, zorder=5)
+    
+    ax2.set_title('RSI Indicator')
+    ax2.set_ylabel('RSI')
     ax2.set_xlabel('Volume Bar Number')
+    ax2.set_ylim(0, 100)
     ax2.grid(True, alpha=0.3)
+    ax2.legend()
     
     plt.tight_layout()
     plt.show()
