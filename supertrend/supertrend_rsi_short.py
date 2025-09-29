@@ -390,7 +390,7 @@ def main():
     print("Loading TXF data for SuperTrend Volume Bar Analysis...")
     
     # Load uptrend periods data
-    uptrend_periods_file = './supertrend/supertrend_uptrend_periods.csv'
+    uptrend_periods_file = './supertrend_uptrend_periods.csv'
     try:
         uptrend_periods_df = pd.read_csv(uptrend_periods_file)
         print(f"Loaded {len(uptrend_periods_df)} uptrend periods:")
@@ -466,11 +466,11 @@ def main():
     plot_data(supertrend_positions, "TXF SuperTrend Strategy")
     
     # Plot performance curve
-    plot_performance_curve(supertrend_df)
+    # plot_performance_curve(supertrend_df)
     
     # Save results
-    output_file = 'supertrend_modified_results.csv'
-    supertrend_df.to_csv(output_file, index=False)
+    output_file = 'supertrend/supertrend_positions_short.csv'
+    supertrend_df[['start_time', 'end_time', 'close', 'open', 'rsi_recovery', 'signals']].to_csv(output_file, index=False)
     print(f"\nResults saved to: {output_file}")
     
     return supertrend_df

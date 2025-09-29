@@ -494,6 +494,11 @@ def main():
     supertrend_df.to_csv(output_file, index=False)
     print(f"\nResults saved to: {output_file}")
 
+    # Save supertrend_positions
+    positions_file = 'supertrend/supertrend_positions_long.csv'
+    supertrend_positions[['start_time', 'end_time', 'signals']].to_csv(positions_file, index=True)
+    print(f"SuperTrend positions saved to: {positions_file}")
+
     return supertrend_df
 
 if __name__ == '__main__':
