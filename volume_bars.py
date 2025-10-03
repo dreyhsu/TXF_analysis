@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import talib
 
+# buy at the place where only a few people can buy, 
+# and sell at where only a few people can sell.
+
 def create_volume_bars(df, volume_per_bar=1000):
     """
     Create volume bars from tick data
@@ -48,6 +51,9 @@ def create_volume_bars(df, volume_per_bar=1000):
     
     # Calculate RSI
     volume_bars['rsi'] = talib.RSI(volume_bars['close'].values, timeperiod=14)
+    
+    # Calculate SMA 20
+    volume_bars['sma_20'] = talib.SMA(volume_bars['close'].values, timeperiod=20)
     
     # Generate buy and sell signals based on RSI
     signals = generate_rsi_signals(volume_bars['rsi'].values)
@@ -201,6 +207,9 @@ def plot_volume_bars(volume_bars, title="Volume Bars Chart"):
     if sell_indices:
         ax1.scatter(sell_indices, volume_bars.loc[sell_indices, 'close'], 
                    color='red', marker='v', s=100, label='Sell Signal', zorder=5)
+    
+    # Plot SMA 20 line
+    ax1.plot(volume_bars.index, volume_bars['sma_20'], color='blue', linewidth=2, label='SMA 20', alpha=0.8)
     
     ax1.set_title(f'{title} - Price with RSI Signals')
     ax1.set_ylabel('Price')

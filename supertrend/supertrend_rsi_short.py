@@ -3,35 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import talib
-import glob
 warnings.filterwarnings('ignore')
-
-def create_volume_bars(df, volume_per_bar=1000):
-    """
-    Create volume bars from tick data
-    """
-    # Combine date and time to create proper datetime
-    df['datetime'] = pd.to_datetime(df['成交日期'] + ' ' + df['成交時間'])
-    df = df.sort_values('datetime').reset_index(drop=True)
-    
-    # Calculate cumulative volume
-    df['cumulative_volume'] = df['成交數量(B+S)'].cumsum()
-    df['volume_bar'] = (df['cumulative_volume'] // volume_per_bar).astype(int)
-    
-    # Group by volume bar and create OHLCV data
-    volume_bars = df.groupby('volume_bar').agg({
-        'datetime': ['first', 'last'],
-        '成交價格': ['first', 'max', 'min', 'last'],
-        '成交數量(B+S)': 'sum'
-    }).reset_index()
-    
-    # Flatten column names
-    volume_bars.columns = ['volume_bar', 'start_time', 'end_time', 'open', 'high', 'low', 'close', 'volume']
-    
-    # Set index for easier handling
-    volume_bars.set_index('volume_bar', inplace=True)
-    
-    return volume_bars
 
 def calculate_atr(df, period=15):
     """
@@ -387,8 +359,8 @@ def main():
     """
     Main execution function
     """
-    print("Loading TXF data for SuperTrend Volume Bar Analysis...")
-    
+    print("Loading Volume Bars for SuperTrend Analysis...")
+
     # Load uptrend periods data
     uptrend_periods_file = './supertrend_uptrend_periods.csv'
     try:
@@ -400,29 +372,16 @@ def main():
         print(f"Warning: Uptrend periods file not found at {uptrend_periods_file}")
         print("Strategy will trade all signals without uptrend period filtering.")
         uptrend_periods_df = None
-    
-    # Load data
-    csv_pattern = './data/Daily_*_cleaned.csv'
-    csv_files = glob.glob(csv_pattern)
-    
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found matching pattern: {csv_pattern}")
-    
-    # Load and combine data
-    df_list = []
-    for file in csv_files:
-        temp_df = pd.read_csv(file)
-        df_list.append(temp_df)
-    
-    df = pd.concat(df_list, ignore_index=True)
-    print(f"Loaded {len(df)} total records")
-    
-    # Create volume bars
-    volume_per_bar = 1000
-    print(f"Creating volume bars with {volume_per_bar} volume per bar...")
-    data = create_volume_bars(df, volume_per_bar)
-    
-    print(f"Created {len(data)} volume bars")
+
+    # Load pre-created volume bars from CSV
+    volume_per_bar = 3000
+    volume_bars_file = f'supertrend/volume_bars_btc_{volume_per_bar}.csv'
+    try:
+        data = pd.read_csv(volume_bars_file, index_col='volume_bar')
+        print(f"Loaded {len(data)} volume bars from {volume_bars_file}")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Volume bars file not found: {volume_bars_file}\n"
+                                f"Please run 'python supertrend/create_volume_bars.py --asset TXF --volume {volume_per_bar}' first to generate volume bars.")
     
     # SuperTrend parameters
     volatility = 5
@@ -463,14 +422,14 @@ def main():
     print(f"Bearish percentage: {(supertrend_df['signals'] == -1).sum()/len(supertrend_df)*100:.1f}%")
     
     # Plot data
-    plot_data(supertrend_positions, "TXF SuperTrend Strategy")
+    # plot_data(supertrend_positions, "TXF SuperTrend Strategy")
     
     # Plot performance curve
     # plot_performance_curve(supertrend_df)
     
     # Save results
     output_file = 'supertrend/supertrend_positions_short.csv'
-    supertrend_df[['start_time', 'end_time', 'close', 'open', 'rsi_recovery', 'signals']].to_csv(output_file, index=False)
+    supertrend_df[['start_time', 'end_time', 'close', 'open', 'rsi_recovery', 'signals', 'trades']].to_csv(output_file, index=False)
     print(f"\nResults saved to: {output_file}")
     
     return supertrend_df

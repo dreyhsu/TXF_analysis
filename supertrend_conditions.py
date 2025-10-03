@@ -41,13 +41,6 @@ def calculate_atr(df, period=15):
     df.dropna(inplace=True)
     return df
 
-def calculate_rsi(df, period=14):
-    """
-    Calculate RSI (Relative Strength Index) using talib
-    """
-    df['rsi'] = talib.RSI(df['close'].values, timeperiod=period)
-    return df
-
 def supertrend(df, atr_multiplier=3):
     """
     Calculate SuperTrend indicator
@@ -82,134 +75,157 @@ def supertrend(df, atr_multiplier=3):
     df.drop(['basicUpperband', 'basicLowerband'], axis=1, inplace=True)
     return df
 
-def generate_signals(df):
+def generate_conditions_signals(df):
     """
-    Generate trading signals based on SuperTrend
+    Generate trading signals with con1 (entry) and con2 (exit) conditions
     """
-    # Initiate a signals list
-    signals = [0]
-
-    # Loop through the dataframe
+    # Initialize condition columns
+    df['con1'] = 0  # Entry condition
+    df['con2'] = 0  # Exit condition
+    df['position'] = 0  # Current position: 1=long, -1=short, 0=neutral
+    df['signals'] = 0  # Trading signals
+    
+    # Loop through the dataframe starting from index 1
     for i in range(1, len(df)):
-        if df['close'].iloc[i] > df['upperband'].iloc[i]:
-            signals.append(1)
-        elif df['close'].iloc[i] < df['lowerband'].iloc[i]:
-            signals.append(-1)
+        current_close = df['close'].iloc[i]
+        prev_close = df['close'].iloc[i-1]
+        current_upper = df['upperband'].iloc[i]
+        current_lower = df['lowerband'].iloc[i]
+        prev_upper = df['upperband'].iloc[i-1]
+        prev_lower = df['lowerband'].iloc[i-1]
+        prev_position = df['position'].iloc[i-1]
+        
+        # Entry Conditions (con1)
+        # Long entry: price breaks above upperband
+        long_entry = (prev_close <= prev_upper) and (current_close > current_upper)
+        # Short entry: price breaks below lowerband  
+        short_entry = (prev_close >= prev_lower) and (current_close < current_lower)
+        
+        # Exit Conditions (con2)
+        # Long exit: price breaks below lowerband while in long position
+        long_exit = (prev_position == 1) and (prev_close >= prev_lower) and (current_close < current_lower)
+        # Short exit: price breaks above upperband while in short position
+        short_exit = (prev_position == -1) and (prev_close <= prev_upper) and (current_close > current_upper)
+        
+        # Set conditions
+        if long_entry:
+            df.loc[i, 'con1'] = 1  # Long entry
+            df.loc[i, 'position'] = 1
+            df.loc[i, 'signals'] = 1
+        elif short_entry:
+            df.loc[i, 'con1'] = -1  # Short entry
+            df.loc[i, 'position'] = -1
+            df.loc[i, 'signals'] = -1
+        elif long_exit:
+            df.loc[i, 'con2'] = -1  # Long exit
+            df.loc[i, 'position'] = 0
+            df.loc[i, 'signals'] = 0
+        elif short_exit:
+            df.loc[i, 'con2'] = 1  # Short exit
+            df.loc[i, 'position'] = 0
+            df.loc[i, 'signals'] = 0
         else:
-            signals.append(signals[i-1])
-
-    # Add the signals list as a new column in the dataframe
-    df['signals'] = signals
-    df['signals'] = df["signals"].shift(1)  # Remove look ahead bias
+            # Continue previous position
+            df.loc[i, 'position'] = prev_position
+            df.loc[i, 'signals'] = prev_position
+    
+    # Shift signals to remove look-ahead bias
+    df['signals'] = df['signals'].shift(1)
+    df['position'] = df['position'].shift(1)
+    
     return df
 
-def detect_rsi_oversold_recovery(df):
+def create_entry_exit_positions(df):
     """
-    Detect RSI oversold recovery points (from below 30 to above 50)
+    Create position markers for entry and exit points
     """
-    if 'rsi' not in df.columns:
-        return df
-    
-    recovery_signals = [False]
-    
-    for i in range(1, len(df)):
-        current_rsi = df['rsi'].iloc[i]
-        prev_rsi = df['rsi'].iloc[i-1]
-        
-        # Check if RSI crosses from below 30 to above 50
-        # Look back to see if we were recently oversold (below 30)
-        was_oversold = False
-        lookback = min(10, i)  # Look back up to 10 periods
-        
-        for j in range(1, lookback + 1):
-            if i - j >= 0 and df['rsi'].iloc[i - j] < 30:
-                was_oversold = True
-                break
-        
-        # Signal when RSI crosses above 50 after being oversold
-        if (was_oversold and 
-            prev_rsi <= 50 and 
-            current_rsi > 50):
-            recovery_signals.append(True)
-        else:
-            recovery_signals.append(False)
-    
-    df['rsi_recovery'] = recovery_signals
-    return df
-
-def create_positions(df):
-    """
-    Create position markers for visualization
-    """
-    # Create copies for plotting (hide bands when not in use)
+    # Create copies for plotting
     df['upperband_plot'] = df['upperband'].copy()
     df['lowerband_plot'] = df['lowerband'].copy()
     
-    # Hide upperband when signal is bullish (1), show lowerband
+    # Hide bands based on current signal
     df.loc[df['signals'] == 1, 'upperband_plot'] = np.nan
-    # Hide lowerband when signal is bearish (-1), show upperband  
     df.loc[df['signals'] == -1, 'lowerband_plot'] = np.nan
 
-    # Create position lists
-    buy_positions = [np.nan]
-    sell_positions = [np.nan]
+    # Create position lists for entry and exit
+    long_entry_positions = []
+    short_entry_positions = []
+    long_exit_positions = []
+    short_exit_positions = []
 
-    # Loop through the dataframe
-    for i in range(1, len(df)):
-        # Buy signal: transition from bearish to bullish
-        if df['signals'].iloc[i] == 1 and df['signals'].iloc[i] != df['signals'].iloc[i-1]:
-            buy_positions.append(df['close'].iloc[i])
-            sell_positions.append(np.nan)
-        # Sell signal: transition from bullish to bearish
-        elif df['signals'].iloc[i] == -1 and df['signals'].iloc[i] != df['signals'].iloc[i-1]:
-            sell_positions.append(df['close'].iloc[i])
-            buy_positions.append(np.nan)
+    for i in range(len(df)):
+        # Entry positions (con1)
+        if df['con1'].iloc[i] == 1:  # Long entry
+            long_entry_positions.append(df['close'].iloc[i])
         else:
-            buy_positions.append(np.nan)
-            sell_positions.append(np.nan)
+            long_entry_positions.append(np.nan)
+            
+        if df['con1'].iloc[i] == -1:  # Short entry
+            short_entry_positions.append(df['close'].iloc[i])
+        else:
+            short_entry_positions.append(np.nan)
+        
+        # Exit positions (con2)
+        if df['con2'].iloc[i] == -1:  # Long exit
+            long_exit_positions.append(df['close'].iloc[i])
+        else:
+            long_exit_positions.append(np.nan)
+            
+        if df['con2'].iloc[i] == 1:  # Short exit
+            short_exit_positions.append(df['close'].iloc[i])
+        else:
+            short_exit_positions.append(np.nan)
 
-    # Add the positions list as a new column in the dataframe
-    df['buy_positions'] = buy_positions
-    df['sell_positions'] = sell_positions
+    # Add position columns
+    df['long_entry'] = long_entry_positions
+    df['short_entry'] = short_entry_positions
+    df['long_exit'] = long_exit_positions
+    df['short_exit'] = short_exit_positions
+    
     return df
 
-def plot_data(df, title="SuperTrend Strategy"):
+def plot_conditions_data(df, title="SuperTrend Conditions Strategy"):
     """
-    Plot SuperTrend data with RSI subplot
+    Plot SuperTrend data with entry/exit conditions
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 12), gridspec_kw={'height_ratios': [3, 1]})
+    fig, ax1 = plt.subplots(1, 1, figsize=(15, 8))
     
-    # === TOP SUBPLOT: Price and SuperTrend ===
     # Plot price line
     ax1.plot(df.index, df['close'], color='black', linewidth=1.5, label='Close Price', zorder=3)
     
-    # Plot SuperTrend bands (only show active band based on signal)
+    # Plot SuperTrend bands
     ax1.plot(df.index, df['lowerband_plot'], color='green', linewidth=2, 
              label='SuperTrend Support (Bullish)', zorder=2)
     ax1.plot(df.index, df['upperband_plot'], color='red', linewidth=2,
              label='SuperTrend Resistance (Bearish)', zorder=2)
     
-    # Plot buy/sell signals
-    buy_indices = df.index[~np.isnan(df['buy_positions'])]
-    sell_indices = df.index[~np.isnan(df['sell_positions'])]
+    # Plot entry signals (con1)
+    long_entry_indices = df.index[~np.isnan(df['long_entry'])]
+    short_entry_indices = df.index[~np.isnan(df['short_entry'])]
     
-    if len(buy_indices) > 0:
-        ax1.scatter(buy_indices, df.loc[buy_indices, 'buy_positions'], 
-                   color='#2cf651', marker='^', s=100, label='Buy Signal', zorder=5, 
-                   edgecolors='white', linewidth=2)
+    if len(long_entry_indices) > 0:
+        ax1.scatter(long_entry_indices, df.loc[long_entry_indices, 'long_entry'], 
+                   color='#00ff00', marker='^', s=120, label='Long Entry (con1)', zorder=5, 
+                   edgecolors='black', linewidth=2)
     
-    if len(sell_indices) > 0:
-        ax1.scatter(sell_indices, df.loc[sell_indices, 'sell_positions'], 
-                   color='#f50100', marker='v', s=100, label='Sell Signal', zorder=5, 
-                   edgecolors='white', linewidth=2)
+    if len(short_entry_indices) > 0:
+        ax1.scatter(short_entry_indices, df.loc[short_entry_indices, 'short_entry'], 
+                   color='#ff0000', marker='v', s=120, label='Short Entry (con1)', zorder=5, 
+                   edgecolors='black', linewidth=2)
     
-    # Plot RSI oversold recovery points on price chart
-    if 'rsi_recovery' in df.columns:
-        recovery_indices = df.index[df['rsi_recovery'] == True]
-        if len(recovery_indices) > 0:
-            ax1.scatter(recovery_indices, df.loc[recovery_indices, 'close'], 
-                       color='orange', marker='o', s=80, label='RSI Oversold Recovery', zorder=6, 
-                       edgecolors='black', linewidth=1)
+    # Plot exit signals (con2)
+    long_exit_indices = df.index[~np.isnan(df['long_exit'])]
+    short_exit_indices = df.index[~np.isnan(df['short_exit'])]
+    
+    if len(long_exit_indices) > 0:
+        ax1.scatter(long_exit_indices, df.loc[long_exit_indices, 'long_exit'], 
+                   color='#ffff00', marker='x', s=120, label='Long Exit (con2)', zorder=5, 
+                   linewidth=3)
+    
+    if len(short_exit_indices) > 0:
+        ax1.scatter(short_exit_indices, df.loc[short_exit_indices, 'short_exit'], 
+                   color='#ff8c00', marker='x', s=120, label='Short Exit (con2)', zorder=5, 
+                   linewidth=3)
     
     # Fill between price and SuperTrend bands
     bullish_mask = df['signals'] == 1
@@ -227,37 +243,11 @@ def plot_data(df, title="SuperTrend Strategy"):
                         df['upperband'][bearish_mask],
                         alpha=0.2, color='red', interpolate=True)
     
-    ax1.set_title(f'{title} - Volume Bars with SuperTrend')
+    ax1.set_title(f'{title} - Volume Bars with Entry/Exit Conditions')
     ax1.set_ylabel('Price')
+    ax1.set_xlabel('Volume Bar Number')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
-    
-    # === BOTTOM SUBPLOT: RSI ===
-    if 'rsi' in df.columns:
-        ax2.plot(df.index, df['rsi'], color='purple', linewidth=1.5, label='RSI')
-        
-        # Add RSI reference lines
-        ax2.axhline(y=70, color='red', linestyle='--', alpha=0.7, label='Overbought (70)')
-        ax2.axhline(y=30, color='green', linestyle='--', alpha=0.7, label='Oversold (30)')
-        ax2.axhline(y=50, color='gray', linestyle='-', alpha=0.5, label='Midline (50)')
-        
-        # Highlight RSI oversold recovery points
-        if 'rsi_recovery' in df.columns:
-            recovery_indices = df.index[df['rsi_recovery'] == True]
-            if len(recovery_indices) > 0:
-                ax2.scatter(recovery_indices, df.loc[recovery_indices, 'rsi'], 
-                           color='orange', marker='o', s=60, label='RSI Recovery (30→50)', zorder=5, 
-                           edgecolors='black', linewidth=1)
-        
-        # Fill oversold and overbought areas
-        ax2.fill_between(df.index, 0, 30, alpha=0.2, color='green', label='Oversold Zone')
-        ax2.fill_between(df.index, 70, 100, alpha=0.2, color='red', label='Overbought Zone')
-        
-        ax2.set_ylabel('RSI')
-        ax2.set_xlabel('Volume Bar Number')
-        ax2.set_ylim(0, 100)
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
     
     plt.tight_layout()
     plt.show()
@@ -342,7 +332,7 @@ def plot_performance_curve(strategy_df):
     """
     plt.figure(figsize=(12, 6))
     plt.plot(strategy_df.index, strategy_df['cumulative_balance'], label='Strategy', linewidth=2)
-    plt.title('SuperTrend Strategy Performance Curve')
+    plt.title('SuperTrend Conditions Strategy Performance Curve')
     plt.xlabel('Volume Bar Number')
     plt.ylabel('Portfolio Value')
     plt.legend()
@@ -354,10 +344,10 @@ def main():
     """
     Main execution function
     """
-    print("Loading TXF data for SuperTrend Volume Bar Analysis...")
+    print("Loading TXF data for SuperTrend Conditions Analysis...")
     
     # Load data
-    csv_pattern = './data/Daily_*_cleaned.csv'
+    csv_pattern = 'data/Daily_*_cleaned.csv'
     csv_files = glob.glob(csv_pattern)
     
     if not csv_files:
@@ -380,30 +370,30 @@ def main():
     print(f"Created {len(data)} volume bars")
     
     # SuperTrend parameters
-    volatility = 5
+    volatility = 3
     
     # Apply supertrend formula
     supertrend_data = supertrend(df=data, atr_multiplier=volatility)
     
-    # Calculate RSI
-    supertrend_data = calculate_rsi(supertrend_data, period=14)
+    # Generate signals with conditions
+    supertrend_positions = generate_conditions_signals(supertrend_data)
     
-    # Generate the signals
-    supertrend_positions = generate_signals(supertrend_data)
+    # Generate entry/exit positions
+    supertrend_positions = create_entry_exit_positions(supertrend_positions)
     
-    # Detect RSI oversold recovery points
-    supertrend_positions = detect_rsi_oversold_recovery(supertrend_positions)
+    # Count entry and exit signals
+    long_entries = (~np.isnan(supertrend_positions['long_entry'])).sum()
+    short_entries = (~np.isnan(supertrend_positions['short_entry'])).sum()
+    long_exits = (~np.isnan(supertrend_positions['long_exit'])).sum()
+    short_exits = (~np.isnan(supertrend_positions['short_exit'])).sum()
     
-    # Generate the positions
-    supertrend_positions = create_positions(supertrend_positions)
-    
-    # Count signals
-    buy_signals = (~np.isnan(supertrend_positions['buy_positions'])).sum()
-    sell_signals = (~np.isnan(supertrend_positions['sell_positions'])).sum()
-    rsi_recovery_signals = (supertrend_positions['rsi_recovery'] == True).sum()
-    print(f"Buy signals: {buy_signals}")
-    print(f"Sell signals: {sell_signals}")
-    print(f"RSI oversold recovery signals: {rsi_recovery_signals}")
+    print(f"\n=== ENTRY/EXIT SIGNALS ===")
+    print(f"Long entries (con1=1): {long_entries}")
+    print(f"Short entries (con1=-1): {short_entries}")
+    print(f"Long exits (con2=-1): {long_exits}")
+    print(f"Short exits (con2=1): {short_exits}")
+    print(f"Total entry signals: {long_entries + short_entries}")
+    print(f"Total exit signals: {long_exits + short_exits}")
     
     # Calculate performance
     supertrend_df = strategy_performance(supertrend_positions, capital=100000, leverage=1)
@@ -411,20 +401,20 @@ def main():
     # Display SuperTrend metrics summary  
     print("\n=== SUPERTREND METRICS SUMMARY ===")
     print(f"Average ATR: {supertrend_df['atr'].mean():.2f}")
-    print(f"Bullish signal bars: {(supertrend_df['signals'] == 1).sum()}")
-    print(f"Bearish signal bars: {(supertrend_df['signals'] == -1).sum()}")
-    print(f"Neutral signal bars: {(supertrend_df['signals'] == 0).sum()}")
-    print(f"Bullish percentage: {(supertrend_df['signals'] == 1).sum()/len(supertrend_df)*100:.1f}%")
-    print(f"Bearish percentage: {(supertrend_df['signals'] == -1).sum()/len(supertrend_df)*100:.1f}%")
+    print(f"Long position bars: {(supertrend_df['signals'] == 1).sum()}")
+    print(f"Short position bars: {(supertrend_df['signals'] == -1).sum()}")
+    print(f"Neutral position bars: {(supertrend_df['signals'] == 0).sum()}")
+    print(f"Long percentage: {(supertrend_df['signals'] == 1).sum()/len(supertrend_df)*100:.1f}%")
+    print(f"Short percentage: {(supertrend_df['signals'] == -1).sum()/len(supertrend_df)*100:.1f}%")
     
-    # Plot data
-    plot_data(supertrend_positions, "TXF SuperTrend Strategy")
+    # Plot data with conditions
+    plot_conditions_data(supertrend_positions, "TXF SuperTrend Conditions Strategy")
     
     # Plot performance curve
     plot_performance_curve(supertrend_df)
     
     # Save results
-    output_file = 'supertrend_modified_results.csv'
+    output_file = 'supertrend_conditions_results.csv'
     supertrend_df.to_csv(output_file, index=False)
     print(f"\nResults saved to: {output_file}")
     

@@ -151,15 +151,15 @@ def plot_data(df, title="SuperTrend Strategy"):
     buy_indices = df.index[~np.isnan(df['buy_positions'])]
     sell_indices = df.index[~np.isnan(df['sell_positions'])]
     
-    # if len(buy_indices) > 0:
-    #     ax1.scatter(buy_indices, df.loc[buy_indices, 'buy_positions'], 
-    #                color='#2cf651', marker='^', s=100, label='Buy Signal', zorder=5, 
-    #                edgecolors='white', linewidth=2)
+    if len(buy_indices) > 0:
+        ax1.scatter(buy_indices, df.loc[buy_indices, 'buy_positions'], 
+                   color='#2cf651', marker='^', s=100, label='Buy Signal', zorder=5, 
+                   edgecolors='white', linewidth=2)
     
-    # if len(sell_indices) > 0:
-    #     ax1.scatter(sell_indices, df.loc[sell_indices, 'sell_positions'], 
-    #                color='#f50100', marker='v', s=100, label='Sell Signal', zorder=5, 
-    #                edgecolors='white', linewidth=2)
+    if len(sell_indices) > 0:
+        ax1.scatter(sell_indices, df.loc[sell_indices, 'sell_positions'], 
+                   color='#f50100', marker='v', s=100, label='Sell Signal', zorder=5, 
+                   edgecolors='white', linewidth=2)
     
     # Fill between price and SuperTrend bands
     bullish_mask = df['signals'] == 1
