@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAU/USD Chart Pattern Labeling Tool</title>
+    <!-- Google Font Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Plotly JS CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1c1c21;
+            --accent-green: #26a69a;
+            --accent-red: #ef5350;
+            --accent-orange: #ffb74d;
+            --accent-blue: #64b5f6;
+            --text-color: #e0e0e6;
+            --text-muted: #888896;
+            --border-color: #2d2d35;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background-color: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #fff 30%, var(--accent-orange) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        label {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        select {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        select:focus {
+            border-color: var(--accent-orange);
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .chart-container {
+            flex: 1;
+            height: 100%;
+            background-color: var(--bg-color);
+            position: relative;
+        }
+
+        #chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .sidebar {
+            width: 380px;
+            border-left: 1px solid var(--border-color);
+            background-color: var(--card-bg);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .info-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .info-val {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .sparkline-container {
+            margin-top: 5px;
+            height: 80px;
+            position: relative;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        #sparkline {
+            width: 100%;
+            height: 100%;
+        }
+
+        .spark-guide {
+            position: absolute;
+            left: 5px;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        .spark-guide.top { top: 3px; }
+        .spark-guide.bottom { bottom: 3px; }
+
+        .label-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .label-btn {
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background-color: rgba(255, 255, 255, 0.02);
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .label-btn:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .label-btn::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: transparent;
+            transition: background-color 0.2s;
+        }
+
+        .label-btn.w-bottom:hover, .label-btn.w-bottom.active {
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+        .label-btn.w-bottom.active::after { background-color: var(--accent-green); }
+
+        .label-btn.spike:hover, .label-btn.spike.active {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+        .label-btn.spike.active::after { background-color: var(--accent-blue); }
+
+        .label-btn.normal:hover, .label-btn.normal.active {
+            border-color: var(--text-muted);
+            color: var(--text-color);
+        }
+        .label-btn.normal.active::after { background-color: var(--text-muted); }
+
+        textarea {
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 13px;
+            resize: none;
+            outline: none;
+            height: 60px;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus {
+            border-color: var(--accent-orange);
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .save-btn {
+            background-color: var(--accent-orange);
+            color: #000;
+            border: none;
+            padding: 14px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .save-btn:hover {
+            opacity: 0.9;
+        }
+
+        .save-btn:disabled {
+            background-color: var(--border-color);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .delete-btn {
+            background-color: transparent;
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 12px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: none;
+            text-align: center;
+        }
+
+        .delete-btn:hover {
+            background-color: rgba(239, 83, 80, 0.1);
+        }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 250px;
+            pointer-events: auto;
+            transform: translateX(120%);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+            opacity: 0;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--accent-green);
+        }
+
+        .toast.info {
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--accent-red);
+        }
+
+        .selection-prompt {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(28, 28, 33, 0.85);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .shortcut-hint {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>XAU/USD Pattern Labeler</h1>
+        <div class="header-controls">
+            <label for="date-select">Select Date:</label>
+            <select id="date-select">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="chart-container">
+            <div id="chart"></div>
+            <div class="selection-prompt" id="prompt-bar">👈 Click on any candle to select or inspect a 30-candle window</div>
+        </div>
+
+        <div class="sidebar">
+            <div>
+                <h3 class="section-title">Selected Window</h3>
+                <div class="card info-grid">
+                    <div class="info-item">
+                        <span class="info-label">End Time</span>
+                        <span class="info-val" id="val-end-time">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Start Time</span>
+                        <span class="info-val" id="val-start-time">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">End Index</span>
+                        <span class="info-val" id="val-end-idx">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Valley Risk R</span>
+                        <span class="info-val" id="val-risk-r">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="section-title">Lows MA5 Shape (Normalized)</h3>
+                <div class="sparkline-container">
+                    <span class="spark-guide top">1.0 (Peak)</span>
+                    <canvas id="sparkline"></canvas>
+                    <span class="spark-guide bottom">0.0 (Trough)</span>
+                </div>
+            </div>
+
+            <div class="label-selector">
+                <h3 class="section-title">Class Label</h3>
+                <button class="label-btn w-bottom" onclick="selectLabel('W-Bottom', this)">W-Bottom (Double Bottom)</button>
+                <button class="label-btn spike" onclick="selectLabel('Consolidation-Spike', this)">Consolidation-Spike</button>
+                <button class="label-btn normal" onclick="selectLabel('Normal', this)">Normal (No Pattern)</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <h3 class="section-title">User Notes</h3>
+                <textarea id="user-notes" placeholder="Enter notes or comments here..."></textarea>
+            </div>
+
+            <div class="btn-group">
+                <button class="save-btn" id="btn-save" onclick="saveLabel()" disabled>Save Window</button>
+                <div class="shortcut-hint" id="shortcut-tip">Press <strong>S</strong> as a keyboard shortcut to save</div>
+                <button class="delete-btn" id="btn-delete" onclick="deleteLabel()">Delete Window</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <script>
+        var rawData = [];
+        var savedLabels = [];
+        var selectedEndIndex = null;
+        var selectedLabel = null;
+        var isEditMode = false;
+
+        // Key Listener: Press 's' to save/update
+        document.addEventListener('keyup', function(e) {
+            if (e.key.toLowerCase() === 's') {
+                // Avoid executing when user is typing in notes/textarea
+                if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+                    return;
+                }
+                var btn = document.getElementById('btn-save');
+                if (btn && !btn.disabled) {
+                    saveLabel();
+                }
+            }
+        });
+
+        // Fetch available dates on startup
+        fetch('/api/dates')
+            .then(res => res.json())
+            .then(dates => {
+                var select = document.getElementById('date-select');
+                select.innerHTML = '';
+                dates.forEach(d => {
+                    var opt = document.createElement('option');
+                    opt.value = d;
+                    opt.textContent = d;
+                    select.appendChild(opt);
+                });
+                
+                if(dates.length > 0) {
+                    select.value = dates[dates.length - 1];
+                    loadChartData(dates[dates.length - 1]);
+                }
+                
+                select.addEventListener('change', function() {
+                    loadChartData(this.value);
+                });
+            });
+
+        function loadChartData(date) {
+            resetSidebar();
+            Plotly.purge('chart');
+            document.getElementById('chart').innerHTML = `<div style="display:flex;justify-content:center;align-items:center;height:100%;color:var(--text-muted);">Loading data for ${date}...</div>`;
+            
+            // Load K-line data
+            fetch(`/api/data?date=${date}`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.error) {
+                        alert("Error: " + data.error);
+                        return;
+                    }
+                    rawData = data;
+                    
+                    // Load saved labels
+                    fetch(`/api/labels?date=${date}`)
+                        .then(res => res.json())
+                        .then(labels => {
+                            savedLabels = labels;
+                            renderChart(data, date);
+                            drawSavedLabels();
+                        });
+                });
+        }
+
+        function renderChart(data, date) {
+            var dates = data.map(r => r.Date);
+            var opens = data.map(r => r.Open);
+            var highs = data.map(r => r.High);
+            var lows = data.map(r => r.Low);
+            var closes = data.map(r => r.Close);
+            var ma5 = data.map(r => r.ma5);
+
+            var traceCandlestick = {
+                x: dates,
+                open: opens,
+                high: highs,
+                low: lows,
+                close: closes,
+                type: 'candlestick',
+                name: 'Candlesticks',
+                increasing: { line: { color: '#26a69a' }, fillcolor: '#26a69a' },
+                decreasing: { line: { color: '#ef5350' }, fillcolor: '#ef5350' }
+            };
+
+            var traceMA5 = {
+                x: dates,
+                y: ma5,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'MA5 (Lows)',
+                line: { color: '#ffb74d', width: 1.5 },
+                opacity: 0.8
+            };
+
+            var layout = {
+                template: 'plotly_dark',
+                paper_bgcolor: '#121214',
+                plot_bgcolor: '#121214',
+                margin: { l: 50, r: 20, t: 40, b: 40 },
+                xaxis: {
+                    type: 'category',
+                    rangeslider: { visible: false },
+                    gridcolor: '#2d2d35',
+                    linecolor: '#2d2d35'
+                },
+                yaxis: {
+                    gridcolor: '#2d2d35',
+                    linecolor: '#2d2d35',
+                    autorange: true,
+                    fixedrange: false
+                },
+                legend: {
+                    x: 0.01,
+                    y: 0.99,
+                    bgcolor: 'rgba(28, 28, 33, 0.7)',
+                    bordercolor: '#2d2d35',
+                    borderwidth: 1
+                },
+                hovermode: 'x unified'
+            };
+
+            Plotly.newPlot('chart', [traceCandlestick, traceMA5], layout);
+
+            // Register Click Listener on Plotly Chart
+            var chartDiv = document.getElementById('chart');
+            chartDiv.on('plotly_click', function(clickData) {
+                var point = clickData.points[0];
+                var dateStr = point.x;
+                
+                var idx = rawData.findIndex(r => r.Date === dateStr);
+                if (idx !== -1) {
+                    selectWindow(idx);
+                }
+            });
+        }
+
+        function drawSavedLabels() {
+            var shapes = [];
+            
+            // Draw all saved label highlights
+            savedLabels.forEach(l => {
+                var endIdx = rawData.findIndex(r => r.Date.endsWith(l.end_time));
+                if (endIdx >= 29) {
+                    var startPoint = rawData[endIdx - 29].Date;
+                    var endPoint = rawData[endIdx].Date;
+                    
+                    var color = 'rgba(158, 158, 158, 0.07)';
+                    if (l.label === 'W-Bottom') color = 'rgba(38, 166, 154, 0.08)';
+                    else if (l.label === 'Consolidation-Spike') color = 'rgba(100, 181, 246, 0.08)';
+                    
+                    shapes.push({
+                        type: 'rect',
+                        xref: 'x',
+                        yref: 'paper',
+                        x0: startPoint,
+                        y0: 0,
+                        x1: endPoint,
+                        y1: 1,
+                        fillcolor: color,
+                        line: {
+                            color: color.replace('0.08', '0.4').replace('0.07', '0.4'),
+                            width: 1,
+                            dash: 'dot'
+                        }
+                    });
+                }
+            });
+
+            // Draw current active selection highlight
+            if (selectedEndIndex !== null) {
+                var startPoint = rawData[selectedEndIndex - 29].Date;
+                var endPoint = rawData[selectedEndIndex].Date;
+                
+                var activeColor = 'rgba(255, 183, 77, 0.2)'; // default orange active box
+                if (selectedLabel === 'W-Bottom') activeColor = 'rgba(38, 166, 154, 0.25)';
+                else if (selectedLabel === 'Consolidation-Spike') activeColor = 'rgba(100, 181, 246, 0.25)';
+                else if (selectedLabel === 'Normal') activeColor = 'rgba(158, 158, 158, 0.25)';
+
+                shapes.push({
+                    type: 'rect',
+                    xref: 'x',
+                    yref: 'paper',
+                    x0: startPoint,
+                    y0: 0,
+                    x1: endPoint,
+                    y1: 1,
+                    fillcolor: activeColor,
+                    line: {
+                        color: activeColor.replace('0.25', '0.8').replace('0.2', '0.8'),
+                        width: 1.5
+                    }
+                });
+            }
+
+            Plotly.relayout('chart', { shapes: shapes });
+        }
+
+        function selectWindow(endIndex) {
+            if (endIndex < 29) {
+                alert("Please select a candle at least 30 indices into the day to form a complete window.");
+                return;
+            }
+
+            selectedEndIndex = endIndex;
+            var windowData = rawData.slice(endIndex - 29, endIndex + 1);
+            var startTime = windowData[0].Date.split(' ')[1];
+            var endTime = windowData[windowData.length - 1].Date.split(' ')[1];
+
+            // Update details
+            document.getElementById('val-end-time').textContent = endTime;
+            document.getElementById('val-start-time').textContent = startTime;
+            document.getElementById('val-end-idx').textContent = endIndex;
+            
+            // Valley Risk
+            var ma5_values = windowData.map(r => r.ma5).filter(v => v !== null);
+            var minMA5 = Math.min(...ma5_values);
+            var entryPrice = windowData[windowData.length - 1].Close;
+            var riskR = entryPrice - minMA5;
+            document.getElementById('val-risk-r').textContent = riskR > 0 ? riskR.toFixed(2) + " pts" : "N/A";
+
+            // Render Sparkline
+            var normMA5 = normalizeArray(ma5_values);
+            drawSparkline(normMA5);
+
+            // Check if there is an existing label at this exact endpoint
+            var existing = savedLabels.find(l => l.end_time === endTime);
+            if (existing) {
+                isEditMode = true;
+                selectedLabel = existing.label;
+                document.getElementById('user-notes').value = existing.notes || '';
+                document.getElementById('btn-save').textContent = 'Update Window';
+                document.getElementById('btn-delete').style.display = 'block';
+                
+                // Highlight correct button
+                var buttons = document.querySelectorAll('.label-btn');
+                buttons.forEach(btn => btn.classList.remove('active'));
+                if (existing.label === 'W-Bottom') document.querySelector('.label-btn.w-bottom').classList.add('active');
+                else if (existing.label === 'Consolidation-Spike') document.querySelector('.label-btn.spike').classList.add('active');
+                else if (existing.label === 'Normal') document.querySelector('.label-btn.normal').classList.add('active');
+            } else {
+                isEditMode = false;
+                selectedLabel = null;
+                document.getElementById('user-notes').value = '';
+                document.getElementById('btn-save').textContent = 'Save Window';
+                document.getElementById('btn-delete').style.display = 'none';
+                
+                var buttons = document.querySelectorAll('.label-btn');
+                buttons.forEach(btn => btn.classList.remove('active'));
+            }
+
+            drawSavedLabels();
+            checkSaveButton();
+        }
+
+        function normalizeArray(arr) {
+            var min = Math.min(...arr);
+            var max = Math.max(...arr);
+            var range = max - min;
+            return arr.map(v => range > 0 ? (v - min) / range : 0.5);
+        }
+
+        function drawSparkline(values) {
+            var canvas = document.getElementById('sparkline');
+            var ctx = canvas.getContext('2d');
+            
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (values.length < 2) return;
+
+            // Draw shadow glow
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#ffb74d';
+            
+            ctx.beginPath();
+            ctx.strokeStyle = '#ffb74d';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            for (var i = 0; i < values.length; i++) {
+                var x = (i / (values.length - 1)) * (canvas.width - 20) + 10;
+                var y = canvas.height - (values[i] * (canvas.height - 20) + 10);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+        }
+
+        function selectLabel(label, element) {
+            selectedLabel = label;
+            
+            var buttons = document.querySelectorAll('.label-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+
+            // Draw with correct label color immediately
+            drawSavedLabels();
+            checkSaveButton();
+        }
+
+        function checkSaveButton() {
+            var btn = document.getElementById('btn-save');
+            if (selectedEndIndex !== null && selectedLabel !== null) {
+                btn.disabled = false;
+            } else {
+                btn.disabled = true;
+            }
+        }
+
+        // Sleek Custom Toast Spawner
+        function showToast(message, type = 'success') {
+            var container = document.getElementById('toast-container');
+            var toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            var icon = '✓';
+            if (type === 'error') icon = '✗';
+            else if (type === 'info') icon = 'ℹ';
+            
+            toast.innerHTML = `<span style="font-weight:bold; font-size:16px;">${icon}</span> <span>${message}</span>`;
+            container.appendChild(toast);
+            
+            // Slide in
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 50);
+            
+            // Slide out and remove
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 2500);
+        }
+
+        function saveLabel() {
+            if (selectedEndIndex === null || selectedLabel === null) return;
+
+            var windowData = rawData.slice(selectedEndIndex - 29, selectedEndIndex + 1);
+            var targetDate = document.getElementById('date-select').value;
+            var endTime = windowData[windowData.length - 1].Date.split(' ')[1];
+            
+            var payload = {
+                date: targetDate,
+                end_time: endTime,
+                label: selectedLabel,
+                notes: document.getElementById('user-notes').value,
+                features: {
+                    ma5_raw: windowData.map(r => r.ma5),
+                    ma5_normalized: normalizeArray(windowData.map(r => r.ma5)),
+                    open_raw: windowData.map(r => r.Open),
+                    high_raw: windowData.map(r => r.High),
+                    low_raw: windowData.map(r => r.Low),
+                    close_raw: windowData.map(r => r.Close),
+                    volume_raw: windowData.map(r => r.Volume)
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    var msg = isEditMode 
+                        ? `Updated ${selectedLabel} for ${endTime}!` 
+                        : `Saved ${selectedLabel}! Total: ${res.total_labels}`;
+                    showToast(msg, 'success');
+                    
+                    // Reload labels list and redraw
+                    fetchLabelsForDate(targetDate);
+                } else {
+                    showToast("Error saving: " + res.error, 'error');
+                }
+            })
+            .catch(err => {
+                showToast("Request failed: " + err, 'error');
+            });
+        }
+
+        function deleteLabel() {
+            if (selectedEndIndex === null || !isEditMode) return;
+            
+            var windowData = rawData.slice(selectedEndIndex - 29, selectedEndIndex + 1);
+            var targetDate = document.getElementById('date-select').value;
+            var endTime = windowData[windowData.length - 1].Date.split(' ')[1];
+            
+            if (!confirm(`Are you sure you want to delete the saved label at ${endTime}?`)) {
+                return;
+            }
+
+            fetch('/api/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: targetDate, end_time: endTime })
+            })
+            .then(res => res.json())
+            .then(res => {
+                if (res.status === 'success') {
+                    showToast("Label successfully deleted!", 'info');
+                    
+                    // Refresh labels list
+                    fetchLabelsForDate(targetDate);
+                    resetSidebar();
+                } else {
+                    showToast("Error deleting: " + res.error, 'error');
+                }
+            })
+            .catch(err => {
+                showToast("Request failed: " + err, 'error');
+            });
+        }
+
+        function fetchLabelsForDate(date) {
+            fetch(`/api/labels?date=${date}`)
+                .then(res => res.json())
+                .then(labels => {
+                    savedLabels = labels;
+                    drawSavedLabels();
+                });
+        }
+
+        function resetSidebar() {
+            selectedEndIndex = null;
+            selectedLabel = null;
+            isEditMode = false;
+            document.getElementById('val-end-time').textContent = '-';
+            document.getElementById('val-start-time').textContent = '-';
+            document.getElementById('val-end-idx').textContent = '-';
+            document.getElementById('val-risk-r').textContent = '-';
+            document.getElementById('user-notes').value = '';
+            document.getElementById('btn-save').textContent = 'Save Window';
+            document.getElementById('btn-save').disabled = true;
+            document.getElementById('btn-delete').style.display = 'none';
+            
+            var buttons = document.querySelectorAll('.label-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            var canvas = document.getElementById('sparkline');
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (rawData.length > 0) {
+                drawSavedLabels();
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+from youtube video: https://www.youtube.com/watch?v=1C0LTO2RJgM&list=LL
+long only strategy
+should find a example in tradingview
+timeframe: 20min 1hr 3hr
+the three entry all should be positive return in long term
+1st entry: long timeframe in uptrend, short swing indicator recover.
+2st entry: long timeframe in uptrend, middle swing indicator recover.
+
+but I think at 1st entry, the indicator shown might be different 
+
+a strategy that trafe btc between 9/26 22:30 to 10/7 20:30 with high profit
